@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ template "helmExporter.fullname" . }}
+  labels:
+{{ include "helmExporter.labels.stakater" . | indent 4 }}
+{{ include "helmExporter.labels.chart" . | indent 4 }}
+spec:
+  ports:
+    - port: 9484
+      protocol: TCP
+      targetPort: metrics
+      name: metrics
+  selector:
+{{ include "helmExporter.labels.selector" . | indent 4 }}

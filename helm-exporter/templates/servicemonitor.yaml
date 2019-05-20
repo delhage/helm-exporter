@@ -1,0 +1,20 @@
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  labels:
+    app: monitoring-servicemonitor
+    k8s-app: {{ template "helmExporter.fullname" . }}
+  name: {{ template "helmExporter.fullname" . }}
+spec:
+  endpoints:
+    - interval: 30s
+      port: metrics
+      scheme: http
+      path: /
+  jobLabel: k8s-app
+  namespaceSelector:
+    matchNames:
+      - {{ .Release.Namespace }}
+  selector:
+    matchLabels:
+{{ include "helmExporter.labels.selector" . | indent 6 }}

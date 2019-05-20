@@ -1,0 +1,28 @@
+apiVersion: apps/v1beta1
+kind: Deployment
+metadata:
+  name: {{ template "helmExporter.fullname" . }}
+  labels:
+{{ include "helmExporter.labels.stakater" . | indent 4 }}
+{{ include "helmExporter.labels.chart" . | indent 4 }}
+  annotations:
+    "helm.sh/created": {{.Release.Time.Seconds | quote }}
+    "prometheus.io/scrape": "true"
+    "prometheus.io/port": "9484"
+spec:
+  replicas: 1
+  template:
+    metadata:
+      labels:
+{{ include "helmExporter.labels.selector" . | indent 8 }}
+    spec:
+      containers:
+      - name: kubedex
+        image: "{{ .Values.image.registry }}/{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+        imagePullPolicy: {{ .Values.image.pullPolicy | quote }}
+        ports:
+        - name: metrics
+          containerPort: 9484
+        env:
+        - name: TILLER_NAMESPACE
+          value: "{{ .Values.tillerNamespace }}"
