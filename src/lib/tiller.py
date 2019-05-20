@@ -43,7 +43,10 @@ class Tiller(object):
         '''
         Return a tiller channel
         '''
-        return grpc.insecure_channel('%s:%s' % (self._host, self._port))
+        return grpc.insecure_channel('%s:%s' % (self._host, self._port), options=[
+          ('grpc.max_send_message_length', 100 * 1024 * 1024),
+          ('grpc.max_receive_message_length', 100 * 1024 * 1024)
+      ])
 
     def tiller_status(self):
         '''
