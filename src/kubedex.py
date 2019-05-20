@@ -8,15 +8,28 @@ import sys
 import time
 from lib import tiller
 from collections import Counter
+from hapi.release import status_pb2 as hapi_dot_release_dot_status__pb2
 
-tiller_endpoint = 'tiller-deploy.kube-system'
+
+tiller_namespace = 'kube-system'
 
 if 'ENV' in os.environ:
     if os.environ['ENV'] == 'dev':
         tiller_endpoint = '127.0.0.1'
+else:
+    if 'TILLER_NAMESPACE' in os.environ:
+        tiller_namespace = os.environ['TILLER_NAMESPACE']
+    tiller_endpoint = "tiller-deploy.%s" % tiller_namespace
 
-if 'TILLER_NAMESPACE' in os.environ:
-    tiller_endpoint = "tiller-deploy.%s" % os.environ['TILLER_NAMESPACE']
+
+class Release:
+    def __init__(self, name, chart_name, namespace, status, version, app_version):
+        self.name = name
+        self.chart_name = chart_name
+        self.namespace = namespace
+        self.status = status
+        self.version = version
+        self.app_version = app_version
 
 class CustomCollector(object):
     def __init__(self):
@@ -36,18 +49,29 @@ class CustomCollector(object):
     def collect(self):
         while True:
             try:
-                all_releases = self.tiller.list_releases()
+                all_releases_raw = self.tiller.list_releases()
+                all_releases = []
+                for release_raw in all_releases_raw:
+                    
+                    release = Release(release_raw.name,
+                                    release_raw.chart.metadata.name,
+                                    release_raw.namespace,
+                                    hapi_dot_release_dot_status__pb2._STATUS_CODE.values_by_number[release_raw.info.status.code].name,
+                                    release_raw.chart.metadata.version,
+                                    release_raw.chart.metadata.appVersion)
+                    all_releases.append(release)
+                self.tiller.get_release_content(all_releases[0].name, all_releases[0].version)
                 break
             except Exception as e:
                 print(e)
                 continue
         metric = Metric('helm_chart_info', 'Helm chart information', 'gauge')
-        chart_count = Counter([(release.chart.metadata.name, release.chart.metadata.version, release.namespace) for release in all_releases])
+        chart_count = Counter([(release.name, release.chart_name, release.version, release.app_version, release.namespace, release.status, tiller_namespace) for release in all_releases])
         for chart in chart_count:
             metric.add_sample(
                     'helm_chart_info', 
                     value=chart_count[chart], 
-                    labels={"name": chart[0], "version": chart[1], "namespace": chart[2]}
+                    labels={"name": chart[0], "chart_name": chart[1], "version": chart[2], "app_version":  chart[3],"namespace": chart[4], "status": chart[5], "tiller_namespace": chart[6]}
              )
         yield metric
 
