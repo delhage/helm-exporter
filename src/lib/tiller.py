@@ -53,7 +53,7 @@ class Tiller(object):
         Get Helm Release content
         '''
         stub = ReleaseServiceStub(self.channel)
-        req = GetReleaseContentRequest(name=release_name)
+        req = GetReleaseContentRequest(name=release_name, version=version)
         release_content = stub.GetReleaseContent(req, self.timeout, metadata=self.metadata)
         print(str(release_content))
 
