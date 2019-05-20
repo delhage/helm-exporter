@@ -66,13 +66,13 @@ class Tiller(object):
 
         return False
 
-    def list_releases(self):
+    def list_releases(self, status):
         '''
         List Helm Releases
         '''
         releases = []
         stub = ReleaseServiceStub(self.channel)
-        req = ListReleasesRequest(limit=RELEASE_LIMIT)
+        req = ListReleasesRequest(limit=RELEASE_LIMIT, status_codes=[status])
         release_list = stub.ListReleases(req, self.timeout,
                                          metadata=self.metadata)
         for y in release_list:

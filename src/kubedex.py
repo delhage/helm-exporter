@@ -6,6 +6,8 @@ from prometheus_client.core import REGISTRY, Metric
 import os
 import sys
 import time
+import itertools
+import operator
 from lib import tiller
 from collections import Counter
 from hapi.release import status_pb2 as hapi_dot_release_dot_status__pb2
@@ -23,13 +25,14 @@ else:
 
 
 class Release:
-    def __init__(self, name, chart_name, namespace, status, version, app_version):
+    def __init__(self, name, chart_name, namespace, status, version, app_version, revision):
         self.name = name
         self.chart_name = chart_name
         self.namespace = namespace
         self.status = status
         self.version = version
         self.app_version = app_version
+        self.revision = revision
 
 class CustomCollector(object):
     def __init__(self):
@@ -46,32 +49,65 @@ class CustomCollector(object):
             print("Failed to connect to tiller on %s" % tiller_endpoint)
             sys.exit(1)
 
-    def collect(self):
-        while True:
-            try:
-                all_releases_raw = self.tiller.list_releases()
-                all_releases = []
-                for release_raw in all_releases_raw:
-                    
-                    release = Release(release_raw.name,
+    def get_unique(self, deployed_releases_raw, failed_releases_raw):
+        unique = []
+        unique_failed_releases = self.get_unique_releases(failed_releases_raw)
+        deployed_releases = self.to_releases(deployed_releases_raw)
+        for deployed_release in deployed_releases:
+            isFailedRelease = False
+            for failed_release in unique_failed_releases:
+                if deployed_release.name == failed_release.name and failed_release.revision > deployed_release.revision:
+                    isFailedRelease = True
+                    unique.append(failed_release)
+                    break
+
+            if not isFailedRelease:
+                unique.append(deployed_release)
+                
+        return unique
+
+    def to_releases(self, releases_raw):
+        releases = []
+        for release_raw in releases_raw:
+            release = Release(release_raw.name,
                                     release_raw.chart.metadata.name,
                                     release_raw.namespace,
                                     hapi_dot_release_dot_status__pb2._STATUS_CODE.values_by_number[release_raw.info.status.code].name,
                                     release_raw.chart.metadata.version,
-                                    release_raw.chart.metadata.appVersion)
-                    all_releases.append(release)
-                self.tiller.get_release_content(all_releases[0].name, all_releases[0].version)
+                                    release_raw.chart.metadata.appVersion,
+                                    release_raw.version)
+            releases.append(release)
+        return releases
+
+    def get_unique_releases(self, raw_releases):
+        unique = []
+        releases = self.to_releases(raw_releases)
+        get_attr = operator.attrgetter('name')
+
+        new_list = [list(g) for k, g in itertools.groupby(sorted(releases, key=get_attr), get_attr)]
+
+        for release_group in new_list:
+            latest_release = max(release_group, key=operator.attrgetter('revision'))
+            unique.append(latest_release)
+        return unique
+
+    def collect(self):
+        while True:
+            try:
+                all_deployed_releases_raw = self.tiller.list_releases("DEPLOYED")
+                all_failed_releases_raw = self.tiller.list_releases("FAILED")
+                all_releases = self.get_unique(all_deployed_releases_raw, all_failed_releases_raw)
                 break
             except Exception as e:
                 print(e)
                 continue
         metric = Metric('helm_chart_info', 'Helm chart information', 'gauge')
-        chart_count = Counter([(release.name, release.chart_name, release.version, release.app_version, release.namespace, release.status, tiller_namespace) for release in all_releases])
+        chart_count = Counter([(release.name, release.chart_name, release.version, release.app_version, release.namespace, release.status, release.revision, tiller_namespace) for release in all_releases])
         for chart in chart_count:
             metric.add_sample(
                     'helm_chart_info', 
                     value=chart_count[chart], 
-                    labels={"name": chart[0], "chart_name": chart[1], "version": chart[2], "app_version":  chart[3],"namespace": chart[4], "status": chart[5], "tiller_namespace": chart[6]}
+                    labels={"name": chart[0], "chart_name": chart[1], "version": chart[2], "app_version":  chart[3],"namespace": chart[4], "status": chart[5], "revision": chart[6], "tiller_namespace": chart[7]}
              )
         yield metric
 
