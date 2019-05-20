@@ -55,6 +55,7 @@ class Tiller(object):
         stub = ReleaseServiceStub(self.channel)
         req = GetReleaseContentRequest(name=release_name, version=version)
         release_content = stub.GetReleaseContent(req, self.timeout, metadata=self.metadata)
+        return release_content
 
     def tiller_status(self):
         '''
