@@ -107,7 +107,7 @@ class CustomCollector(object):
             metric.add_sample(
                     'helm_chart_info', 
                     value=chart_count[chart], 
-                    labels={"name": chart[0], "chart_name": chart[1], "version": chart[2], "app_version":  chart[3],"namespace": chart[4], "status": chart[5], "revision": chart[6], "tiller_namespace": chart[7]}
+                    labels={"name": chart[0], "chart_name": chart[1], "version": chart[2], "app_version":  chart[3],"namespace": chart[4], "status": chart[5], "revision": str(chart[6]), "tiller_namespace": chart[7]}
              )
         yield metric
 
