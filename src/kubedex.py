@@ -8,6 +8,7 @@ import sys
 import time
 import itertools
 import operator
+import re
 from lib import tiller
 from collections import Counter
 from hapi.release import status_pb2 as hapi_dot_release_dot_status__pb2
@@ -25,7 +26,7 @@ else:
 
 
 class Release:
-    def __init__(self, name, chart_name, namespace, status, version, app_version, revision):
+    def __init__(self, name, chart_name, namespace, status, version, app_version, revision, app_name):
         self.name = name
         self.chart_name = chart_name
         self.namespace = namespace
@@ -33,6 +34,7 @@ class Release:
         self.version = version
         self.app_version = app_version
         self.revision = revision
+        self.app_name = app_name
 
 class CustomCollector(object):
     def __init__(self):
@@ -63,19 +65,40 @@ class CustomCollector(object):
 
             if not isFailedRelease:
                 unique.append(deployed_release)
-                
-        return unique
+        
+        return self.patch_releases(unique)
+
+    def patch_releases(self, releases):
+        for release in releases:
+            try:
+                content = self.tiller.get_release_content(release.name, release.revision)
+                pattern = re.escape('\nimage: ')+"(.*?)"+re.escape('\n')
+                matches = re.findall(pattern, str(content.release.config.raw))
+                if len(matches) != 0:
+                        image = matches[0]
+                        splitted = image.rsplit(":", 1)
+                        image_name = splitted[0]
+                        image_version = splitted[1]
+                        atg_app_name = image_name.rsplit("/", 1)[1]
+                        release.app_version = image_version
+                        release.app_name = atg_app_name
+            except Exception as e:
+                print(e)
+        
+        return releases
 
     def to_releases(self, releases_raw):
         releases = []
         for release_raw in releases_raw:
-            release = Release(release_raw.name,
-                                    release_raw.chart.metadata.name,
-                                    release_raw.namespace,
-                                    hapi_dot_release_dot_status__pb2._STATUS_CODE.values_by_number[release_raw.info.status.code].name,
-                                    release_raw.chart.metadata.version,
-                                    release_raw.chart.metadata.appVersion,
-                                    release_raw.version)
+            name = release_raw.name
+            chart_name = release_raw.chart.metadata.name
+            namespace = release_raw.namespace
+            status = hapi_dot_release_dot_status__pb2._STATUS_CODE.values_by_number[release_raw.info.status.code].name
+            version = release_raw.chart.metadata.version
+            app_version = release_raw.chart.metadata.appVersion
+            revision = release_raw.version
+
+            release = Release(name, chart_name, namespace, status, version, app_version, revision, "")
             releases.append(release)
         return releases
 
@@ -102,12 +125,12 @@ class CustomCollector(object):
                 print(e)
                 continue
         metric = Metric('helm_chart_info', 'Helm chart information', 'gauge')
-        chart_count = Counter([(release.name, release.chart_name, release.version, release.app_version, release.namespace, release.status, release.revision, tiller_namespace) for release in all_releases])
+        chart_count = Counter([(release.name, release.chart_name, release.version, release.app_version, release.namespace, release.status, release.revision, tiller_namespace, release.app_name) for release in all_releases])
         for chart in chart_count:
             metric.add_sample(
                     'helm_chart_info', 
                     value=chart_count[chart], 
-                    labels={"name": chart[0], "chart_name": chart[1], "version": chart[2], "app_version":  chart[3],"namespace": chart[4], "status": chart[5], "revision": str(chart[6]), "tiller_namespace": chart[7]}
+                    labels={"name": chart[0], "chart_name": chart[1], "version": chart[2], "app_version":  chart[3],"namespace": chart[4], "status": chart[5], "revision": str(chart[6]), "tiller_namespace": chart[7], "app_name": chart[8]}
              )
         yield metric
 
